@@ -1,10 +1,13 @@
-# TaPeer CLI 🦫
+# TaPeer CLI
 
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](#)
 
-A fast, ergonomic, and cross-platform command-line client written in Rust for **TaPeer**, the peer-to-peer file and text snippet sharing application.
+A fast, ergonomic, and cross-platform command-line client written in Rust for [**TaPeer**](https://github.com/facundopidal/TaPeer), the peer-to-peer file and text snippet sharing application.
+
+> [!TIP]
+> This CLI connects to a running [TaPeer Server](https://github.com/facundopidal/TaPeer). If you haven't deployed the server yet, check the [TaPeer repository](https://github.com/facundopidal/TaPeer) for setup and hosting instructions.
 
 ---
 
@@ -38,7 +41,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Clone the repository and install the binary globally into your Cargo bin directory:
 
 ```bash
-git clone https://github.com/<your-username>/tapeer-cli.git
+git clone https://github.com/facundopidal/tapeer-cli.git
 cd tapeer-cli
 cargo install --path .
 ```
