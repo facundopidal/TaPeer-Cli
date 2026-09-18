@@ -30,26 +30,35 @@ A fast, ergonomic, and cross-platform command-line client written in Rust for [*
 
 ## 🚀 Installation
 
-### Prerequisites
-Make sure you have [Rust & Cargo](https://rustup.rs/) installed:
+### Quick Install (Prebuilt Binaries)
 
+**Linux & macOS:**
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+curl -fsSL https://raw.githubusercontent.com/facundopidal/tapeer-cli/main/install.sh | bash
 ```
 
-### Build and Install
-Clone the repository and install the binary globally into your Cargo bin directory:
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/facundopidal/tapeer-cli/main/install.ps1 | iex
+```
+
+---
+
+### Build from Source (via Cargo)
+
+If you have [Rust & Cargo](https://rustup.rs/) installed:
+
+```bash
+cargo install --git https://github.com/facundopidal/tapeer-cli.git
+```
+
+Or clone and compile locally:
 
 ```bash
 git clone https://github.com/facundopidal/tapeer-cli.git
 cd tapeer-cli
 cargo install --path .
 ```
-
-Now you can use the `tapeer` command from any terminal!
-
-> [!NOTE]
-> Ensure that `~/.cargo/bin` (or `%USERPROFILE%\.cargo\bin` on Windows) is in your system's `PATH`.
 
 ---
 
