@@ -1,4 +1,5 @@
 mod client;
+mod clipboard;
 mod models;
 
 use anyhow::{Context, Result, bail};
@@ -23,6 +24,7 @@ sin configuraciones complejas.",
     after_help = "EJEMPLOS DE USO:
   tapeer list                         Ver los últimos elementos compartidos
   tapeer text \"clave wifi: 1234\"      Enviar una nota de texto
+  tapeer text --clipboard            Compartir texto del portapapeles
   tapeer send ./documento.pdf         Enviar un archivo
   tapeer get                          Descargar o ver el elemento más reciente
   tapeer get 1                        Descargar el elemento #1 de la lista
@@ -59,10 +61,31 @@ enum Commands {
 }
 
 #[derive(Args, Debug)]
+#[group(required = true, multiple = false)]
 struct TextArgs {
     /// El texto o mensaje que deseas compartir
     #[arg(help = "Texto a compartir (usa comillas si contiene espacios)")]
-    text: String,
+    text: Option<String>,
+
+    /// Comparte explícitamente el texto del portapapeles, sin mostrar su contenido
+    #[arg(long)]
+    clipboard: bool,
+}
+
+impl TextArgs {
+    fn resolve_with(&self, read_clipboard: impl FnOnce() -> Result<String>) -> Result<String> {
+        match (&self.text, self.clipboard) {
+            (Some(text), false) => Ok(text.clone()),
+            (None, true) => {
+                let text = read_clipboard()?;
+                if text.is_empty() {
+                    bail!("El portapapeles no contiene texto para compartir");
+                }
+                Ok(text)
+            }
+            _ => bail!("Debes elegir exactamente un origen de texto"),
+        }
+    }
 }
 
 #[derive(Args, Debug)]
@@ -87,8 +110,16 @@ struct GetArgs {
     copy: bool,
 }
 
+fn main() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    if clipboard::is_helper_invocation() {
+        return clipboard::run_helper();
+    }
+    run()
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let args = Cli::parse();
     let client = TaPeerClient::new(args.server);
 
@@ -174,7 +205,8 @@ async fn main() -> Result<()> {
             );
         }
         Commands::Text(text_args) => {
-            let res = client.share_text(&text_args.text).await?;
+            let text = text_args.resolve_with(clipboard::read_text)?;
+            let res = client.share_text(&text).await?;
 
             println!(
                 "{} {}",
@@ -202,11 +234,7 @@ async fn main() -> Result<()> {
 
                     // Si se pidió copiar al portapapeles
                     if get_args.copy {
-                        let mut clipboard = arboard::Clipboard::new()
-                            .context("No se pudo acceder al portapapeles del sistema")?;
-                        clipboard
-                            .set_text(&content)
-                            .context("No se pudo copiar el texto al portapapeles")?;
+                        clipboard::copy_text(&content)?;
                         println!("✓ Texto copiado al portapapeles.");
                     }
 
@@ -278,11 +306,9 @@ async fn main() -> Result<()> {
 
                     // Si pasó --copy con un archivo, copiamos la ruta del archivo descargado al portapapeles
                     if get_args.copy {
-                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                            let path_str = destination.display().to_string();
-                            let _ = clipboard.set_text(path_str);
-                            println!("{} Texto copiado al portapapeles.", "✓".green().bold());
-                        }
+                        clipboard::copy_text(&destination.display().to_string())
+                            .context("El archivo se guardó, pero no se pudo copiar su ruta")?;
+                        println!("{} Ruta copiada al portapapeles.", "✓".green().bold());
                     }
                 }
             }
@@ -387,5 +413,84 @@ fn format_expiry(expiry_timestamp_ms: u64) -> String {
         format!("expira en {}h {}m", hours, minutes)
     } else {
         format!("expira en {}m", minutes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_accepts_explicit_clipboard_source() {
+        assert!(Cli::try_parse_from(["tapeer", "text", "--clipboard"]).is_ok());
+    }
+
+    #[test]
+    fn text_requires_exactly_one_source() {
+        assert!(Cli::try_parse_from(["tapeer", "text"]).is_err());
+        assert!(Cli::try_parse_from(["tapeer", "text", "message", "--clipboard"]).is_err());
+        assert!(Cli::try_parse_from(["tapeer", "text", "--stdin"]).is_err());
+        assert!(Cli::try_parse_from(["tapeer", "text", ""]).is_ok());
+    }
+
+    #[test]
+    fn positional_text_does_not_read_clipboard_even_when_empty() {
+        for text in ["", "  positional\n🦀  "] {
+            let args = TextArgs {
+                text: Some(text.into()),
+                clipboard: false,
+            };
+            assert_eq!(
+                args.resolve_with(|| panic!("unexpected clipboard read"))
+                    .unwrap(),
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn clipboard_source_preserves_all_text_without_trimming() {
+        let args = TextArgs {
+            text: None,
+            clipboard: true,
+        };
+        for text in [
+            "  ",
+            "  café 🦀\n'quoted' \"double\"\r\n\t$(not executed)\n",
+        ] {
+            assert_eq!(args.resolve_with(|| Ok(text.into())).unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn clipboard_empty_non_text_and_unavailable_fail_resolution() {
+        let args = TextArgs {
+            text: None,
+            clipboard: true,
+        };
+        assert!(args.resolve_with(|| Ok(String::new())).is_err());
+        for message in ["no plain text", "clipboard unavailable", "invalid UTF-8"] {
+            let error = args.resolve_with(|| bail!(message)).unwrap_err();
+            assert_eq!(error.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn invalid_sources_never_read_clipboard() {
+        for args in [
+            TextArgs {
+                text: None,
+                clipboard: false,
+            },
+            TextArgs {
+                text: Some("secret".into()),
+                clipboard: true,
+            },
+        ] {
+            assert!(
+                args.resolve_with(|| panic!("unexpected clipboard read"))
+                    .is_err()
+            );
+        }
     }
 }
